@@ -1,6 +1,15 @@
 # Crypto Reconciliation Engine
 
-## Overview
+A Node.js + MongoDB backend system for reconciling crypto transaction datasets from user and exchange sources.
+
+## Features
+
+- CSV ingestion and validation
+- Asset and transaction type normalization
+- Configurable fuzzy matching engine
+- Reconciliation report generation
+- MongoDB persistence
+- REST API support
 
 This project is a Node.js reconciliation engine for comparing two CSV transaction datasets:
 
@@ -54,6 +63,18 @@ npm run dev
 ---
 
 ## Project structure
+
+```text
+src/
+├── config/
+├── controllers/
+├── models/
+├── routes/
+├── services/
+├── utils/
+├── app.js
+└── server.js
+```
 
 - `src/server.js` - entry point; connects to MongoDB and starts the Express server
 - `src/app.js` - Express app setup, CORS, JSON parsing, routes
@@ -141,17 +162,28 @@ Response:
 - `reportFilePath`
 - `stats`
 
-### GET `/api/report/:runId`
+### Example Response
 
-Returns the full saved reconciliation run data.
+```json
+{
+  "runId": "665f7c91e6a8c1",
+  "reportFilePath": "reports/reconciliation-report.csv",
+  "stats": {
+    "matched": 120,
+    "conflicting": 5,
+    "unmatchedUser": 7,
+    "unmatchedExchange": 3
+  }
+}
 
-### GET `/api/report/:runId/summary`
+## API Endpoints
 
-Returns only the summary counts for a run.
-
-### GET `/api/report/:runId/unmatched`
-
-Returns only unmatched entries for a run.
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/reconcile` | Trigger reconciliation run |
+| GET | `/api/report/:runId` | Fetch full reconciliation report |
+| GET | `/api/report/:runId/summary` | Fetch reconciliation summary |
+| GET | `/api/report/:runId/unmatched` | Fetch unmatched entries only |
 
 ---
 
@@ -209,26 +241,26 @@ Example request override:
 - `TRANSFER_IN` and `TRANSFER_OUT` are treated as `TRANSFER` so transfer flows can reconcile.
 - Type and asset comparisons are case-insensitive.
 
-### 3. Tolerance interpretation
+### 4. Tolerance interpretation
 
 - `TIMESTAMP_TOLERANCE_SECONDS` is interpreted as seconds.
 - `QUANTITY_TOLERANCE_PCT` is interpreted as a percentage value.
   - For example, `0.01` means `0.01%`, not `1%`.
 - Quantity difference is computed relative to the larger absolute quantity value.
 
-### 4. Conflict classification
+### 5. Conflict classification
 
 - If both timestamp and quantity are within tolerance → `Matched`
 - If one side is within tolerance but the other is not → `Conflicting`
 - If both values are outside tolerance but still reasonably close (2x timestamp or 5x quantity tolerance) → `Conflicting`
 - If there is no reasonable match → `Unmatched`
 
-### 5. Report design
+### 6. Report design
 
 - The generated CSV includes both the user and exchange rows on the same line, plus the diff values and reason text.
 - This makes it easy to review which side caused the mismatch.
 
-### 6. Data persistence
+### 7. Data persistence
 
 - `Transaction` documents store each ingested row for audit and debugging.
 - `ReconciliationRun` documents store each run's configuration, statistics, report path, and entry-level reconciliation results.
@@ -256,3 +288,31 @@ This app is essentially a transaction comparison engine that:
 7. writes a friendly reconciliation CSV report.
 
 That is the complete workflow from input to output.
+
+
+## Future Improvements
+
+- Add pagination for large reports
+- Add unit and integration tests
+- Add background job processing for large CSV files
+- Add frontend dashboard for reconciliation visualization
+- Add Docker support
+
+
+## Reconciliation Workflow
+
+```text
+CSV Upload
+   ↓
+Validation & Normalization
+   ↓
+MongoDB Storage
+   ↓
+Transaction Matching
+   ↓
+Conflict Detection
+   ↓
+CSV Report Generation
+   ↓
+REST API Response
+```
