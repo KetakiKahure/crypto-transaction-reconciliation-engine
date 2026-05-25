@@ -11,12 +11,23 @@ A Node.js + MongoDB backend system for reconciling crypto transaction datasets f
 - MongoDB persistence
 - REST API support
 
+## Tech Stack
+
+- Node.js
+- Express.js
+- MongoDB
+- Mongoose
+- Multer
+- CSV Parser
+
 This project is a Node.js reconciliation engine for comparing two CSV transaction datasets:
 
 - `uploads/user_transactions.csv`
 - `uploads/exchange_transactions.csv`
 
 It validates each row, normalizes asset symbols and transaction types, matches user transactions against exchange transactions, classifies results as `Matched`, `Conflicting`, or `Unmatched`, writes a CSV report, and stores the reconciliation data in MongoDB.
+
+
 
 ---
 
