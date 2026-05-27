@@ -79,6 +79,22 @@ app.get("/", (req, res) => {
             API Status: Running
           </div>
 
+          <div style="margin-top:40px; text-align:left; max-width:600px; margin-inline:auto;">
+  <h2 style="color:#38bdf8;">Available APIs</h2>
+
+  <ul style="line-height:2; color:#cbd5e1;">
+    <li><b>GET /health</b> → API health check</li>
+
+    <li><b>POST /api/reconcile</b> → Run reconciliation process</li>
+
+    <li><b>GET /api/report/:runId</b> → Fetch full reconciliation report</li>
+
+    <li><b>GET /api/report/:runId/summary</b> → Fetch reconciliation summary</li>
+
+    <li><b>GET /api/report/:runId/unmatched</b> → Fetch unmatched transactions</li>
+  </ul>
+</div>
+
           <p style="margin-top:30px;">
             <a href="/health">Health Check</a>
           </p>
