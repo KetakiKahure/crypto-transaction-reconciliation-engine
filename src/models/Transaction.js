@@ -44,4 +44,8 @@ const transactionSchema = new mongoose.Schema(
 //   transactionSchema
 // );
 
+transactionSchema.index({ runId: 1 });
+transactionSchema.index({ transactionId: 1 });
+transactionSchema.index({ source: 1 });
+
 export default mongoose.model("Transaction", transactionSchema);

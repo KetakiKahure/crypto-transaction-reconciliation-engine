@@ -4,8 +4,8 @@ const typeMap = {
 
   TRANSFER: "TRANSFER",
 
-  TRANSFER_IN: "TRANSFER",
-  TRANSFER_OUT: "TRANSFER",
+  TRANSFER_IN: "TRANSFER_IN",
+  TRANSFER_OUT: "TRANSFER_OUT",
 };
 
 function normalizeType(type) {

@@ -21,6 +21,7 @@ async function ingestCSV(filePath, source, runId) {
     }
 
     const transactions = [];
+    const seenTransactionIds = new Set();
 
     fs.createReadStream(resolvedPath)
       .pipe(csv())
@@ -35,12 +36,28 @@ async function ingestCSV(filePath, source, runId) {
           errors.push("Missing transaction ID");
         }
 
+        if (row.transaction_id) {
+          if (seenTransactionIds.has(row.transaction_id)) {
+            errors.push("Duplicate transaction ID");
+          } else {
+            seenTransactionIds.add(row.transaction_id);
+          }
+        }
+
         if (!row.timestamp) {
           errors.push("Missing timestamp");
         }
 
         if (row.timestamp && isNaN(parsedTimestamp)) {
           errors.push("Malformed timestamp");
+        }
+
+        if (!row.asset || !row.asset.toString().trim()) {
+          errors.push("Missing asset");
+        }
+
+        if (!row.type || !row.type.toString().trim()) {
+          errors.push("Missing transaction type");
         }
 
         if (quantity === null) {
@@ -71,7 +88,13 @@ async function ingestCSV(filePath, source, runId) {
       })
       .on("end", async () => {
         if (transactions.length > 0) {
-          await Transaction.insertMany(transactions, { ordered: false });
+          try {
+            await Transaction.insertMany(transactions, {
+              ordered: false,
+            });
+          } catch (error) {
+            console.error("Transaction insert warning:", error.message);
+          }
         }
 
         resolve({

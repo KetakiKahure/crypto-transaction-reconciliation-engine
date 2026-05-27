@@ -105,7 +105,20 @@ const canMatchType = (leftType, rightType) => {
   const leftCanonical = normalizeType(leftType);
   const rightCanonical = normalizeType(rightType);
 
-  return leftCanonical === rightCanonical;
+  if (leftCanonical === rightCanonical) {
+    return true;
+  }
+
+  // Allow opposite transfer directions between systems
+  const transferPairs = [
+    ["TRANSFER_OUT", "TRANSFER_IN"],
+    ["TRANSFER_IN", "TRANSFER_OUT"],
+  ];
+
+  return transferPairs.some(
+    ([left, right]) =>
+      leftCanonical === left && rightCanonical === right
+  );
 };
 
 const buildCsvRow = (entry) => {
@@ -295,9 +308,21 @@ export const buildCsvReport = async (entries, runId, reportsDir) => {
 
   await fs.promises.mkdir(path.dirname(csvFilePath), { recursive: true });
 
-  const parser = new Parser({ fields: Object.keys(buildCsvRow(entries[0] || {})) });
   const csvRows = entries.map(buildCsvRow);
-  const csv = parser.parse(csvRows);
+
+const fields =
+  csvRows.length > 0
+    ? Object.keys(csvRows[0])
+    : [
+        "category",
+        "reason",
+        "user_transaction_id",
+        "exchange_transaction_id",
+      ];
+
+const parser = new Parser({ fields });
+
+const csv = parser.parse(csvRows);
 
   await fs.promises.writeFile(csvFilePath, csv, "utf-8");
 
