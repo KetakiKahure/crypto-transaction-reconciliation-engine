@@ -327,3 +327,21 @@ CSV Report Generation
    ↓
 REST API Response
 ```
+
+
+
+## API Testing Results
+
+### POST API
+<img src="screenshots/post-api.png" width="800"/>
+<br><br>
+<img src="screenshots/post-api(2).png" width="800"/>
+<br><br>
+
+### GET API
+<img src="screenshots/report-api.png" width="800"/>
+<br><br>
+<img src="screenshots/reportSummary-api.png" width="800"/>
+<br><br>
+<img src="screenshots/reportUnmatched-api.png" width="800"/>
+<br><br>
