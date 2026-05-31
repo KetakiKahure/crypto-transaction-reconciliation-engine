@@ -1,3 +1,5 @@
+
+
 import fs from "fs";
 import path from "path";
 import { Parser } from "json2csv";
@@ -157,6 +159,9 @@ const buildCsvRow = (entry) => {
   };
 };
 
+
+
+
 export const reconcileTransactions = (userTransactions, exchangeTransactions, config) => {
   const userRows = userTransactions.map((transaction, index) => ({
     ...transaction,
@@ -168,82 +173,168 @@ export const reconcileTransactions = (userTransactions, exchangeTransactions, co
     __sideIndex: index,
   }));
 
+  const exchangeIdMap = new Map();
+  const exchangeAssetBuckets = new Map();
+
+  for (const exchange of exchangeRows) {
+    if (exchange.transactionId) {
+      exchangeIdMap.set(exchange.transactionId, exchange);
+    }
+
+    const assetKey = normalizeAsset(exchange.asset);
+
+    if (!exchangeAssetBuckets.has(assetKey)) {
+      exchangeAssetBuckets.set(assetKey, []);
+    }
+
+    exchangeAssetBuckets.get(assetKey).push(exchange);
+  }
+
   const matchedExchangeIndices = new Set();
   const entries = [];
+  const summary = {
+    matched: 0,
+    conflicting: 0,
+    unmatchedUser: 0,
+    unmatchedExchange: 0,
+    invalidUser: 0,
+    invalidExchange: 0,
+  };
 
   for (const user of userRows) {
     if (!user.isValid) {
-      entries.push(
-        createReportRow(
-          "Invalid (User only)",
-          buildReason(user, null, 0, 0, "Unmatched"),
-          user,
-          null,
-          Number.POSITIVE_INFINITY,
-          Number.POSITIVE_INFINITY
-        )
-      );
-      continue;
-    }
+  entries.push(
+    createReportRow(
+      "Invalid (User only)",
+      buildReason(user, null, 0, 0, "Unmatched"),
+      user,
+      null,
+      Number.POSITIVE_INFINITY,
+      Number.POSITIVE_INFINITY
+    )
+  );
 
-    // First priority: try to match by transaction ID
+  summary.invalidUser++;   // ADD THIS
+
+  continue;
+}
+
     let bestCandidate = null;
     let bestTimestampDiff = Number.POSITIVE_INFINITY;
     let bestQuantityDiff = Number.POSITIVE_INFINITY;
 
-    const idMatch = exchangeRows.find(
-      (exchange) =>
-        !matchedExchangeIndices.has(exchange.__sideIndex) &&
-        exchange.isValid &&
-        exchange.transactionId &&
-        user.transactionId &&
-        exchange.transactionId === user.transactionId
-    );
+    // Transaction ID match
+    if (user.transactionId) {
+      const idMatch = exchangeIdMap.get(user.transactionId);
 
-    if (idMatch) {
-      bestCandidate = idMatch;
-      bestTimestampDiff = getTimestampDiffSeconds(user.timestamp, idMatch.timestamp);
-      bestQuantityDiff = getQuantityDiffPct(user.quantity, idMatch.quantity);
-    } else {
-      // Second priority: fuzzy match by asset, type, time, quantity
-      const candidates = exchangeRows
-        .map((exchange) => {
-          const timestampDiffSeconds = getTimestampDiffSeconds(user.timestamp, exchange.timestamp);
-          const quantityDiffPct = getQuantityDiffPct(user.quantity, exchange.quantity);
-          return {
-            exchange,
-            timestampDiffSeconds,
-            quantityDiffPct,
-          };
-        })
-        .filter(({ exchange, timestampDiffSeconds, quantityDiffPct }) => {
-          return (
-            !matchedExchangeIndices.has(exchange.__sideIndex) &&
-            exchange.isValid &&
-            canMatchAsset(user.asset, exchange.asset) &&
-            canMatchType(user.type, exchange.type) &&
-            timestampDiffSeconds <= config.timestampToleranceSeconds * 10 &&
-            quantityDiffPct <= config.quantityTolerancePct * 50
+      if (
+        idMatch &&
+        idMatch.isValid &&
+        !matchedExchangeIndices.has(idMatch.__sideIndex)
+      ) {
+        bestCandidate = idMatch;
+        bestTimestampDiff = getTimestampDiffSeconds(
+          user.timestamp,
+          idMatch.timestamp
+        );
+        bestQuantityDiff = getQuantityDiffPct(
+          user.quantity,
+          idMatch.quantity
+        );
+      }
+    }
+
+    // Asset bucket search (type filter is applied below)
+    if (!bestCandidate) {
+      const assetKey = normalizeAsset(user.asset);
+
+      const candidates =
+        exchangeAssetBuckets.get(assetKey) || [];
+
+      let bestScore = Number.POSITIVE_INFINITY;
+
+      for (const exchange of candidates) {
+        if (
+          matchedExchangeIndices.has(exchange.__sideIndex) ||
+          !exchange.isValid
+        ) {
+          continue;
+        }
+
+        if (!canMatchType(user.type, exchange.type)) {
+          continue;
+        }
+
+        const timestampDiffSeconds =
+          getTimestampDiffSeconds(
+            user.timestamp,
+            exchange.timestamp
           );
-        })
-        .sort((a, b) => {
-          const scoreA = a.timestampDiffSeconds + a.quantityDiffPct * 1000;
-          const scoreB = b.timestampDiffSeconds + b.quantityDiffPct * 1000;
-          return scoreA - scoreB;
-        });
 
-      bestCandidate = candidates[0]?.exchange;
-      bestTimestampDiff = candidates[0]?.timestampDiffSeconds ?? Number.POSITIVE_INFINITY;
-      bestQuantityDiff = candidates[0]?.quantityDiffPct ?? Number.POSITIVE_INFINITY;
+        const quantityDiffPct =
+          getQuantityDiffPct(
+            user.quantity,
+            exchange.quantity
+          );
+
+        if (
+          timestampDiffSeconds >
+            config.timestampToleranceSeconds * 10 ||
+          quantityDiffPct >
+            config.quantityTolerancePct * 50
+        ) {
+          continue;
+        }
+
+        const score =
+          timestampDiffSeconds +
+          quantityDiffPct * 1000;
+
+        if (score < bestScore) {
+          bestScore = score;
+          bestCandidate = exchange;
+          bestTimestampDiff = timestampDiffSeconds;
+          bestQuantityDiff = quantityDiffPct;
+        }
+      }
     }
 
     if (bestCandidate) {
-      const matchCategory = classifyMatch(bestTimestampDiff, bestQuantityDiff, config);
-      const reason = buildReason(user, bestCandidate, bestTimestampDiff, bestQuantityDiff, matchCategory);
-      const category = matchCategory === "Matched" ? "Matched" : "Conflicting";
+      const matchCategory = classifyMatch(
+        bestTimestampDiff,
+        bestQuantityDiff,
+        config
+      );
 
-      entries.push(createReportRow(category, reason, user, bestCandidate, bestTimestampDiff, bestQuantityDiff));
-      matchedExchangeIndices.add(bestCandidate.__sideIndex);
+      const reason = buildReason(
+        user,
+        bestCandidate,
+        bestTimestampDiff,
+        bestQuantityDiff,
+        matchCategory
+      );
+
+      const category =
+        matchCategory === "Matched"
+          ? "Matched"
+          : "Conflicting";
+
+      entries.push(
+        createReportRow(
+          category,
+          reason,
+          user,
+          bestCandidate,
+          bestTimestampDiff,
+          bestQuantityDiff
+        )
+      );
+
+      summary[category === "Matched" ? "matched" : "conflicting"]++;
+      matchedExchangeIndices.add(
+        bestCandidate.__sideIndex
+      );
+
       continue;
     }
 
@@ -257,10 +348,13 @@ export const reconcileTransactions = (userTransactions, exchangeTransactions, co
         Number.POSITIVE_INFINITY
       )
     );
+    summary.unmatchedUser++;
   }
 
   for (const exchange of exchangeRows) {
-    if (matchedExchangeIndices.has(exchange.__sideIndex)) {
+    if (
+      matchedExchangeIndices.has(exchange.__sideIndex)
+    ) {
       continue;
     }
 
@@ -275,6 +369,8 @@ export const reconcileTransactions = (userTransactions, exchangeTransactions, co
           Number.POSITIVE_INFINITY
         )
       );
+      summary.invalidExchange++;
+
       continue;
     }
 
@@ -288,20 +384,11 @@ export const reconcileTransactions = (userTransactions, exchangeTransactions, co
         Number.POSITIVE_INFINITY
       )
     );
+    summary.unmatchedExchange++;
   }
-
-  const summary = {
-    matched: entries.filter((entry) => entry.category === "Matched").length,
-    conflicting: entries.filter((entry) => entry.category === "Conflicting").length,
-    unmatchedUser: entries.filter((entry) => entry.category === "Unmatched (User only)").length,
-    unmatchedExchange: entries.filter((entry) => entry.category === "Unmatched (Exchange only)").length,
-    invalidUser: entries.filter((entry) => entry.category === "Invalid (User only)").length,
-    invalidExchange: entries.filter((entry) => entry.category === "Invalid (Exchange only)").length,
-  };
 
   return { entries, summary };
 };
-
 export const buildCsvReport = async (entries, runId, reportsDir) => {
   const csvFileName = `reconciliation-report-${runId}.csv`;
   const csvFilePath = path.resolve(reportsDir, csvFileName);
